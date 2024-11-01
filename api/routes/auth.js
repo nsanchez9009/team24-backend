@@ -15,6 +15,7 @@ router.post(
   [
     check('email', 'Email is required').isEmail(),
     check('password', 'Password must be at least 6 characters long').isLength({ min: 6 }),
+    check('username', 'Username is required')
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -31,7 +32,7 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const newUser = new User({ email, password: hashedPassword });
+      const newUser = new User({ email, username, password: hashedPassword });
       await newUser.save();
 
       const token = jwt.sign({ id: newUser._id }, JWT_SECRET);
