@@ -9,25 +9,25 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+// Simplified CORS settings
 const allowedOrigins = [
   /^http:\/\/localhost:\d+$/,      // Allows localhost on any port
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Check if the origin is allowed by testing against the regex or matching in the array
+    // Allow all localhost origins in development or specify frontend URL for production
     if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, // Allow cookies to be sent with requests
 }));
 
+// Import and use routes
 const authRoute = require('./api/routes/auth');
 const userRoute = require('./api/routes/user');
-
 app.use('/api/auth', authRoute);
 app.use('/api/user', userRoute);
 
@@ -36,8 +36,9 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error(err));
 
-// Routes
+// Test Route
 app.get('/api', (req, res) => res.send('API is working'));
 
+// Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -4,8 +4,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { check, validationResult } = require('express-validator');
 const User = require('../models/User');
-const { verifyToken } = require('../middleware/authMiddleware');
-
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 
@@ -36,12 +34,6 @@ router.post(
       await newUser.save();
 
       const token = jwt.sign({ id: newUser._id }, JWT_SECRET);
-
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-      });
 
       res.status(201).json({ message: 'User registered successfully', token });
     } catch (error) {
@@ -74,13 +66,7 @@ router.post(
 
       const token = jwt.sign({ id: user._id }, JWT_SECRET);
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-      });
-
-      res.json({ message: 'Login successful'});
+      res.json({ message: 'Login successful', token: token});
     } catch (error) {
       console.error('Error logging in:', error);
       res.status(500).json({ message: 'Server error' });
