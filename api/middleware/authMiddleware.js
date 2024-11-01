@@ -9,10 +9,10 @@ const verifyToken = (req, res, next) => {
   }
 
   try {
-    // Verify the token
+    // Verify the token and attach only user ID to req.user
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;  // Attach decoded token data (user id) to req.user
-    next();               // Proceed to the next middleware or route handler
+    req.user = decoded.id;  // Attach only user ID to req.user
+    next();                  // Proceed to the next middleware or route handler
   } catch (error) {
     res.status(401).json({ message: 'Token is not valid' });
   }
