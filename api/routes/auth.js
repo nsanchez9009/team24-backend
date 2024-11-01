@@ -74,10 +74,4 @@ router.post(
   }
 );
 
-// Logout user by clearing the cookie
-router.post('/logout', (req, res) => {
-  res.clearCookie('token');
-  res.json({ message: 'Logout successful' });
-});
-
 module.exports = router;
