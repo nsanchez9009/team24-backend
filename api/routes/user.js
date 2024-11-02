@@ -28,4 +28,20 @@ router.put('/updateSchool', verifyToken, async (req, res) => {
   }
 });
 
+router.put('/addclass', verifyToken, async (req, res) => {
+  const { className } = req.body;
+
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user,
+      { $addToSet: { classes: className.toUpperCase() } }, // Ensures unique classes
+      { new: true }
+    );
+    res.json(updatedUser);
+  } catch (error) {
+    console.error('Error adding class:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;
