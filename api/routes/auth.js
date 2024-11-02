@@ -2,10 +2,19 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const { check, validationResult } = require('express-validator');
 const User = require('../models/User');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
+  },
+});
 
 // Register new user
 router.post(
@@ -30,12 +39,26 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const newUser = new User({ email, username, password: hashedPassword });
+      const verificationToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '1d' });
+      const newUser = new User({
+        email,
+        username,
+        password: hashedPassword,
+        isVerified: false,
+        verificationToken,
+      });
       await newUser.save();
 
-      const token = jwt.sign({ id: newUser._id }, JWT_SECRET);
+      // Send verification email
+      const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Verify Your Email',
+        html: `<p>Please verify your email by clicking on the following link: <a href="${verificationUrl}">${verificationUrl}</a></p>`,
+      });
 
-      res.status(201).json({ message: 'User registered successfully', token });
+      res.status(201).json({ message: 'User registered successfully. Please check your email to verify your account.' });
     } catch (error) {
       console.error('Error registering user:', error);
       res.status(500).json({ message: 'Server error' });
@@ -64,9 +87,12 @@ router.post(
         return res.status(400).json({ message: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({ id: user._id }, JWT_SECRET);
+      if (!user.isVerified) {
+        return res.status(400).json({ message: 'Please verify your email before logging in.' });
+      }
 
-      res.json({ message: 'Login successful', token: token});
+      const token = jwt.sign({ id: user._id }, JWT_SECRET);
+      res.json({ message: 'Login successful', token: token });
     } catch (error) {
       console.error('Error logging in:', error);
       res.status(500).json({ message: 'Server error' });

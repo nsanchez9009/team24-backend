@@ -11,6 +11,7 @@ app.use(express.json());
 
 // Simplified CORS settings
 const allowedOrigins = [
+  "https://studybuddy-team24.netlify.app/",
   /^http:\/\/localhost:\d+$/,      // Allows localhost on any port
 ];
 
