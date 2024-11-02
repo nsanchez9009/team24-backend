@@ -44,4 +44,20 @@ router.put('/addclass', verifyToken, async (req, res) => {
   }
 });
 
+router.delete('/deleteclass', verifyToken, async (req, res) => {
+  const { className } = req.body;
+
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user,
+      { $pull: { classes: className.toUpperCase() } }, // Remove class from array
+      { new: true }
+    );
+    res.json(updatedUser);
+  } catch (error) {
+    console.error('Error deleting class:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;
