@@ -100,4 +100,34 @@ router.post(
   }
 );
 
+router.get('/verify-email', async (req, res) => {
+  const { token } = req.query;
+  try {
+      // Decode the token
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const email = decoded.email;
+
+      // Find the user by email
+      const user = await User.findOne({ email });
+
+      if (!user) {
+          return res.status(400).json({ message: 'Invalid or expired token' });
+      }
+
+      // Check if already verified
+      if (user.isVerified) {
+          return res.status(200).json({ message: 'Email is already verified' });
+      }
+
+      // Mark the user as verified
+      user.isVerified = true;
+      await user.save();
+
+      res.status(200).json({ message: 'Email verified successfully' });
+  } catch (error) {
+      console.error('Email verification error:', error);
+      res.status(400).json({ message: 'Invalid or expired token' });
+  }
+});
+
 module.exports = router;
