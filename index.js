@@ -28,7 +28,7 @@ app.use(cors({
 // Import and use routes
 const authRoute = require('./api/routes/auth');
 const userRoute = require('./api/routes/user');
-const schoolRoute = require('./routes/school');
+const schoolRoute = require('./api/routes/school');
 app.use('/api/schools', schoolRoute);
 app.use('/api/auth', authRoute);
 app.use('/api/user', userRoute);
