@@ -130,4 +130,46 @@ router.get('/verify-email', async (req, res) => {
   }
 });
 
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  try {
+      const user = await User.findOne({ email });
+      if (!user) return res.status(400).json({ message: 'User not found' });
+
+      const resetToken = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '1h' });
+      const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+      
+      await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: 'Password Reset',
+          html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. This link expires in 1 hour.</p>`
+      });
+
+      res.json({ message: 'Password reset link sent to your email' });
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body;
+  try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const user = await User.findById(decoded.id);
+      if (!user) return res.status(400).json({ message: 'Invalid token' });
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      user.password = hashedPassword;
+      await user.save();
+
+      res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+      console.error(error);
+      res.status(400).json({ message: 'Invalid or expired token' });
+  }
+});
+
+
 module.exports = router;
