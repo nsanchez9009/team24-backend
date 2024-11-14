@@ -58,18 +58,9 @@ io.on('connection', (socket) => {
   // User joins a lobby
   socket.on('joinLobby', ({ lobbyId, username }) => {
     socket.join(lobbyId);
-    
-    // Create lobby if it doesn't exist, or update currentUsers count
-    if (!lobbies[lobbyId]) {
-      lobbies[lobbyId] = { members: {}, host: username };
-    }
+    if (!lobbies[lobbyId]) lobbies[lobbyId] = { members: {}, host: username };
     lobbies[lobbyId].members[socket.id] = username;
-
-    // Update current user count and send updated user list to lobby
-    const currentUsers = Object.values(lobbies[lobbyId].members).length;
     io.to(lobbyId).emit('userList', Object.values(lobbies[lobbyId].members));
-    
-    console.log(`User ${username} joined lobby ${lobbyId}`);
   });
 
   // Handle new messages
@@ -88,17 +79,12 @@ io.on('connection', (socket) => {
     const lobby = lobbies[lobbyId];
     if (!lobby) return;
 
-    // Remove user from lobby members
-    const username = lobby.members[socket.id];
     delete lobby.members[socket.id];
-    console.log(`User ${username} left lobby ${lobbyId}`);
-
-    // Check if the host left or if the lobby is empty
     const remainingMembers = Object.keys(lobby.members);
-    if (remainingMembers.length === 0 || lobby.host === username) {
+
+    if (remainingMembers.length === 0 || lobby.host === lobby.members[socket.id]) {
       io.to(lobbyId).emit('lobbyClosed');
       delete lobbies[lobbyId];
-      console.log(`Lobby ${lobbyId} closed`);
     } else {
       io.to(lobbyId).emit('userList', Object.values(lobby.members));
     }
