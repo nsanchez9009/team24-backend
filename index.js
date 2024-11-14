@@ -8,17 +8,18 @@ const cors = require('cors');
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app); // Use HTTP server to integrate Socket.io
+const server = http.createServer(app); // HTTP server for Socket.IO
 
+// Define allowed origins for CORS
 const allowedOrigins = [
   'https://studybuddy-team24.netlify.app',
   /^http:\/\/localhost:\d+$/, // Allows localhost on any port
 ];
 
+// Setup Socket.IO server with CORS
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
-      // Allow origins from the allowedOrigins array
       if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
         callback(null, true);
       } else {
@@ -31,6 +32,7 @@ const io = new Server(server, {
   transports: ['websocket', 'polling'],
 });
 
+// Middleware for JSON and CORS
 app.use(express.json());
 app.use(cors({
   origin: function (origin, callback) {
@@ -57,13 +59,13 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error(err));
 
-// Socket.IO setup
+// Socket.IO lobby management
 const lobbies = {}; // Store lobbies and their members
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // Join a lobby
+  // User joins a lobby
   socket.on('joinLobby', ({ lobbyId, username }) => {
     socket.join(lobbyId);
     if (!lobbies[lobbyId]) lobbies[lobbyId] = { members: {}, host: username };
@@ -76,17 +78,21 @@ io.on('connection', (socket) => {
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
-  // Handle leaving or closing lobby
+  // User leaves a lobby or disconnects
   socket.on('leaveLobby', (lobbyId) => handleUserLeave(socket, lobbyId));
   socket.on('disconnect', () => {
     Object.keys(lobbies).forEach((lobbyId) => handleUserLeave(socket, lobbyId));
   });
 
+  // Helper function to manage user leave and lobby closure
   function handleUserLeave(socket, lobbyId) {
     const lobby = lobbies[lobbyId];
     if (!lobby) return;
+
     delete lobby.members[socket.id];
-    if (Object.keys(lobby.members).length === 0 || lobby.host === lobby.members[socket.id]) {
+    const remainingMembers = Object.keys(lobby.members);
+
+    if (remainingMembers.length === 0 || lobby.host === lobby.members[socket.id]) {
       io.to(lobbyId).emit('lobbyClosed');
       delete lobbies[lobbyId];
     } else {
