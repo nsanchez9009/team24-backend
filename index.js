@@ -8,7 +8,8 @@ const cors = require('cors');
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app); // HTTP server for Socket.IO
+const server = http.createServer(app);
+const Lobby = require('./models/Lobby'); // Assuming your lobby schema is in models/Lobby.js
 
 // Define allowed origins for CORS
 const allowedOrigins = [
@@ -32,7 +33,7 @@ const io = new Server(server, {
   transports: ['websocket', 'polling'],
 });
 
-// Middleware for JSON and CORS
+// Middleware to handle JSON and CORS
 app.use(express.json());
 app.use(cors({
   origin: function (origin, callback) {
@@ -59,42 +60,58 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error(err));
 
-// Socket.IO lobby management
-const lobbies = {}; // Store lobbies and their members
+// Socket.IO setup
+const lobbies = {}; // Store active lobbies and their members
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // User joins a lobby
-  socket.on('joinLobby', ({ lobbyId, username }) => {
+  // Join a lobby and add user to the lobby members
+  socket.on('joinLobby', async ({ lobbyId, username }) => {
     socket.join(lobbyId);
-    if (!lobbies[lobbyId]) lobbies[lobbyId] = { members: {}, host: username };
+
+    if (!lobbies[lobbyId]) {
+      const lobby = await Lobby.findById(lobbyId); // Fetch lobby to confirm existence
+      if (!lobby) {
+        socket.emit('lobbyClosed');
+        return;
+      }
+      lobbies[lobbyId] = { members: {}, host: lobby.host };
+    }
+
     lobbies[lobbyId].members[socket.id] = username;
     io.to(lobbyId).emit('userList', Object.values(lobbies[lobbyId].members));
   });
 
-  // Handle new messages
+  // Handle sending messages
   socket.on('sendMessage', ({ lobbyId, message, username }) => {
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
-  // User leaves a lobby or disconnects
+  // Leave lobby and close if host leaves
   socket.on('leaveLobby', (lobbyId) => handleUserLeave(socket, lobbyId));
+
+  // Disconnect from all joined lobbies
   socket.on('disconnect', () => {
     Object.keys(lobbies).forEach((lobbyId) => handleUserLeave(socket, lobbyId));
   });
 
-  // Helper function to manage user leave and lobby closure
-  function handleUserLeave(socket, lobbyId) {
+  // Handle lobby cleanup and close if the host leaves
+  async function handleUserLeave(socket, lobbyId) {
     const lobby = lobbies[lobbyId];
     if (!lobby) return;
 
+    const isHostLeaving = lobby.host === lobby.members[socket.id];
     delete lobby.members[socket.id];
-    const remainingMembers = Object.keys(lobby.members);
 
-    if (remainingMembers.length === 0 || lobby.host === lobby.members[socket.id]) {
+    if (isHostLeaving || Object.keys(lobby.members).length === 0) {
+      // If the host leaves or lobby is empty, delete lobby and notify
       io.to(lobbyId).emit('lobbyClosed');
-      delete lobbies[lobbyId];
+      await Lobby.findByIdAndDelete(lobbyId); // Remove from database
+      delete lobbies[lobbyId]; // Remove from active lobbies
+
+      // Emit updated lobby list to all clients if necessary
+      io.emit('updateLobbyList');
     } else {
       io.to(lobbyId).emit('userList', Object.values(lobby.members));
     }
