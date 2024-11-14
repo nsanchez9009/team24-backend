@@ -4,15 +4,28 @@ const router = express.Router();
 
 // Create a lobby
 router.post('/create', async (req, res) => {
-  const { className, school, host, maxUsers } = req.body;
-  try {
-    const lobby = new Lobby({ className, school, host, maxUsers, users: [host] });
-    await lobby.save();
-    res.status(201).json(lobby);
-  } catch (error) {
-    res.status(500).json({ message: 'Error creating lobby' });
-  }
-});
+    const { name, className, school, host, maxUsers } = req.body;
+  
+    if (!name) {
+      return res.status(400).json({ message: 'Lobby name is required' });
+    }
+  
+    try {
+      const newLobby = new Lobby({
+        name,
+        className,
+        school,
+        host,
+        maxUsers,
+        currentUsers: 1,
+      });
+      await newLobby.save();
+      res.status(201).json(newLobby);
+    } catch (error) {
+      console.error('Error creating lobby:', error);
+      res.status(500).json({ message: 'Error creating lobby' });
+    }
+  });
 
 // Get lobbies for a specific class and school
 router.get('/list', async (req, res) => {
