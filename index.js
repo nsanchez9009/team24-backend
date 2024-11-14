@@ -13,14 +13,19 @@ const server = http.createServer(app); // HTTP server for Socket.IO
 // Define allowed origins for CORS
 const allowedOrigins = [
   'https://studybuddy-team24.netlify.app',
-  'https://studybuddy.ddns.net',
-  /^http:\/\/localhost:\d+$/, // Allows localhost on any port for development
+  /^http:\/\/localhost:\d+$/, // Allows localhost on any port
 ];
 
 // Setup Socket.IO server with CORS
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+      if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -30,8 +35,13 @@ const io = new Server(server, {
 // Middleware for JSON and CORS
 app.use(express.json());
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
+  origin: function (origin, callback) {
+    if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
 }));
 
 // Import and use routes
