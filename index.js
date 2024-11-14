@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const Lobby = require('/models/Lobby');
+const Lobby = require('./api/models/Lobby');
 
 dotenv.config();
 
