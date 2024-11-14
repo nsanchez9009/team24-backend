@@ -30,6 +30,8 @@ app.use(cors({
 const authRoute = require('./api/routes/auth');
 const userRoute = require('./api/routes/user');
 const schoolRoute = require('./api/routes/school');
+const lobbyRoute = require('./api/routes/lobbies');
+app.use('/api/lobbies', lobbyRoute);
 app.use('/api/schools', schoolRoute);
 app.use('/api/auth', authRoute);
 app.use('/api/user', userRoute);
