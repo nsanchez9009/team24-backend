@@ -1,6 +1,6 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -8,12 +8,25 @@ const cors = require('cors');
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app); // Use http server to integrate Socket.io
-const io = socketIo(server); // Initialize Socket.io with the HTTP server
+const server = http.createServer(app); // Use HTTP server to integrate Socket.io
+const io = new Server(server, {
+  cors: {
+    origin: function (origin, callback) {
+      // Allow origins from the allowedOrigins array
+      if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
 
 app.use(express.json());
 
-// Simplified CORS settings
+// Simplified CORS settings for HTTP requests
 const allowedOrigins = [
   'https://studybuddy-team24.netlify.app',
   /^http:\/\/localhost:\d+$/, // Allows localhost on any port
@@ -44,7 +57,7 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error(err));
 
-// Socket.io setup
+// Socket.IO setup
 const lobbies = {}; // Store lobbies and their members
 
 io.on('connection', (socket) => {
@@ -60,10 +73,10 @@ io.on('connection', (socket) => {
 
   // Handle new messages
   socket.on('sendMessage', ({ lobbyId, message, username }) => {
-    io.to(lobbyId).emit('receiveMessage', { username, message });
+    io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
-  // Leaving or closing lobby
+  // Handle leaving or closing lobby
   socket.on('leaveLobby', (lobbyId) => handleUserLeave(socket, lobbyId));
   socket.on('disconnect', () => {
     Object.keys(lobbies).forEach((lobbyId) => handleUserLeave(socket, lobbyId));
@@ -85,6 +98,6 @@ io.on('connection', (socket) => {
 // Test Route
 app.get('/api', (req, res) => res.send('API is working'));
 
-// Start the server with Socket.io
+// Start the server with Socket.IO
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
