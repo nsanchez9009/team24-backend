@@ -8,41 +8,30 @@ const cors = require('cors');
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app);
-const Lobby = require('./models/Lobby'); // Assuming your lobby schema is in models/Lobby.js
+const server = http.createServer(app); // HTTP server for Socket.IO
 
 // Define allowed origins for CORS
 const allowedOrigins = [
   'https://studybuddy-team24.netlify.app',
-  /^http:\/\/localhost:\d+$/, // Allows localhost on any port
+  'https://studybuddy.ddns.net',
+  /^http:\/\/localhost:\d+$/, // Allows localhost on any port for development
 ];
 
 // Setup Socket.IO server with CORS
 const io = new Server(server, {
   cors: {
-    origin: function (origin, callback) {
-      if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
   transports: ['websocket', 'polling'],
 });
 
-// Middleware to handle JSON and CORS
+// Middleware for JSON and CORS
 app.use(express.json());
 app.use(cors({
-  origin: function (origin, callback) {
-    if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: allowedOrigins,
+  credentials: true,
 }));
 
 // Import and use routes
@@ -60,58 +49,42 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error(err));
 
-// Socket.IO setup
-const lobbies = {}; // Store active lobbies and their members
+// Socket.IO lobby management
+const lobbies = {}; // Store lobbies and their members
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // Join a lobby and add user to the lobby members
-  socket.on('joinLobby', async ({ lobbyId, username }) => {
+  // User joins a lobby
+  socket.on('joinLobby', ({ lobbyId, username }) => {
     socket.join(lobbyId);
-
-    if (!lobbies[lobbyId]) {
-      const lobby = await Lobby.findById(lobbyId); // Fetch lobby to confirm existence
-      if (!lobby) {
-        socket.emit('lobbyClosed');
-        return;
-      }
-      lobbies[lobbyId] = { members: {}, host: lobby.host };
-    }
-
+    if (!lobbies[lobbyId]) lobbies[lobbyId] = { members: {}, host: username };
     lobbies[lobbyId].members[socket.id] = username;
     io.to(lobbyId).emit('userList', Object.values(lobbies[lobbyId].members));
   });
 
-  // Handle sending messages
+  // Handle new messages
   socket.on('sendMessage', ({ lobbyId, message, username }) => {
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
-  // Leave lobby and close if host leaves
+  // User leaves a lobby or disconnects
   socket.on('leaveLobby', (lobbyId) => handleUserLeave(socket, lobbyId));
-
-  // Disconnect from all joined lobbies
   socket.on('disconnect', () => {
     Object.keys(lobbies).forEach((lobbyId) => handleUserLeave(socket, lobbyId));
   });
 
-  // Handle lobby cleanup and close if the host leaves
-  async function handleUserLeave(socket, lobbyId) {
+  // Helper function to manage user leave and lobby closure
+  function handleUserLeave(socket, lobbyId) {
     const lobby = lobbies[lobbyId];
     if (!lobby) return;
 
-    const isHostLeaving = lobby.host === lobby.members[socket.id];
     delete lobby.members[socket.id];
+    const remainingMembers = Object.keys(lobby.members);
 
-    if (isHostLeaving || Object.keys(lobby.members).length === 0) {
-      // If the host leaves or lobby is empty, delete lobby and notify
+    if (remainingMembers.length === 0 || lobby.host === lobby.members[socket.id]) {
       io.to(lobbyId).emit('lobbyClosed');
-      await Lobby.findByIdAndDelete(lobbyId); // Remove from database
-      delete lobbies[lobbyId]; // Remove from active lobbies
-
-      // Emit updated lobby list to all clients if necessary
-      io.emit('updateLobbyList');
+      delete lobbies[lobbyId];
     } else {
       io.to(lobbyId).emit('userList', Object.values(lobby.members));
     }
