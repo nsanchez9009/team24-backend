@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const Lobby = require('./models/Lobby'); // Import Lobby model to handle lobby deletion in the database
 
 dotenv.config();
 
@@ -67,10 +68,14 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   // Join a lobby
-  socket.on('joinLobby', ({ lobbyId, username }) => {
+  socket.on('joinLobby', async ({ lobbyId, username }) => {
     socket.join(lobbyId);
-    if (!lobbies[lobbyId]) lobbies[lobbyId] = { members: {}, host: username };
+    if (!lobbies[lobbyId]) {
+      lobbies[lobbyId] = { members: {}, host: username };
+    }
     lobbies[lobbyId].members[socket.id] = username;
+
+    // Broadcast updated user list to the lobby
     io.to(lobbyId).emit('userList', Object.values(lobbies[lobbyId].members));
   });
 
@@ -79,20 +84,38 @@ io.on('connection', (socket) => {
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
-  // Handle leaving or closing lobby
+  // Handle user leaving the lobby
   socket.on('leaveLobby', (lobbyId) => handleUserLeave(socket, lobbyId));
   socket.on('disconnect', () => {
+    // Handle disconnect for each lobby the user was part of
     Object.keys(lobbies).forEach((lobbyId) => handleUserLeave(socket, lobbyId));
   });
 
-  function handleUserLeave(socket, lobbyId) {
+  // Function to handle user leaving the lobby or closing it
+  async function handleUserLeave(socket, lobbyId) {
     const lobby = lobbies[lobbyId];
     if (!lobby) return;
+
+    // Remove the user from the lobby
     delete lobby.members[socket.id];
+
+    // Check if the lobby is empty or if the host has left
     if (Object.keys(lobby.members).length === 0 || lobby.host === lobby.members[socket.id]) {
+      // Notify users that the lobby has closed
       io.to(lobbyId).emit('lobbyClosed');
+
+      // Delete the lobby from the server memory
       delete lobbies[lobbyId];
+
+      // Remove lobby from the database
+      try {
+        await Lobby.findByIdAndDelete(lobbyId);
+        console.log(`Lobby ${lobbyId} closed and removed from database.`);
+      } catch (error) {
+        console.error(`Failed to delete lobby ${lobbyId} from database:`, error);
+      }
     } else {
+      // Update the user list in the lobby if other users remain
       io.to(lobbyId).emit('userList', Object.values(lobby.members));
     }
   }
