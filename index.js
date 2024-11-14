@@ -8,13 +8,15 @@ const cors = require('cors');
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app); // Use HTTP server to integrate Socket.io
+const server = http.createServer(app); // Use HTTP server to integrate Socket.IO
 
+// Define allowed origins for CORS
 const allowedOrigins = [
   'https://studybuddy-team24.netlify.app',
   /^http:\/\/localhost:\d+$/, // Allows localhost on any port
 ];
 
+// Setup Socket.IO server with CORS
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
@@ -31,6 +33,7 @@ const io = new Server(server, {
   transports: ['websocket', 'polling'],
 });
 
+// Middleware to handle JSON and CORS
 app.use(express.json());
 app.use(cors({
   origin: function (origin, callback) {
