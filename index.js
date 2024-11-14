@@ -9,6 +9,12 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app); // Use HTTP server to integrate Socket.io
+
+const allowedOrigins = [
+  'https://studybuddy-team24.netlify.app',
+  /^http:\/\/localhost:\d+$/, // Allows localhost on any port
+];
+
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
@@ -22,16 +28,10 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true,
   },
+  transports: ['websocket', 'polling'],
 });
 
 app.use(express.json());
-
-// Simplified CORS settings for HTTP requests
-const allowedOrigins = [
-  'https://studybuddy-team24.netlify.app',
-  /^http:\/\/localhost:\d+$/, // Allows localhost on any port
-];
-
 app.use(cors({
   origin: function (origin, callback) {
     if (allowedOrigins.some(pattern => (typeof pattern === 'string' ? pattern === origin : pattern.test(origin))) || !origin) {
