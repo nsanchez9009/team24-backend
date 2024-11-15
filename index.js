@@ -51,13 +51,10 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .catch(err => console.error(err));
 
 // Lobby management with Socket.IO
-const lobbies = {}; // Tracks lobbies and members in-memory
-
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // User joins a lobby
-  socket.on('joinLobby', async ({ lobbyId, username }) => {
+  socket.on('joinLobby', async ({ lobbyId, username, name, className, school, maxUsers }) => {
     try {
       console.log(`User ${username} joining lobby: ${lobbyId}`);
 
@@ -66,62 +63,75 @@ io.on('connection', (socket) => {
 
       // Retrieve or initialize the lobby in MongoDB
       let lobby = await Lobby.findOne({ lobbyId });
+
       if (!lobby) {
         console.log(`Creating new lobby: ${lobbyId}`);
+
+        if (!name || !className || !school || !maxUsers) {
+          console.error('Missing required fields for lobby creation.');
+          socket.emit('error', 'Lobby creation failed: Missing required fields.');
+          return;
+        }
+
+        // Create a new lobby in MongoDB
         lobby = new Lobby({
           lobbyId,
+          name,
+          className,
+          school,
           host: username,
+          maxUsers,
           users: [username],
           currentUsers: 1,
         });
+
         await lobby.save();
       } else if (!lobby.users.includes(username)) {
-        // Add user to the lobby only if not already present
+        // Add user to the existing lobby if not already present
         lobby.users.push(username);
         lobby.currentUsers++;
         await lobby.save();
       }
 
-      // Synchronize with in-memory lobbies
+      // Emit updated user list
+      io.to(lobbyId).emit('userList', lobby.users);
+
+      // Track the user in the in-memory `lobbies` object
       lobbies[lobbyId] = lobbies[lobbyId] || { members: {}, host: lobby.host };
       lobbies[lobbyId].members[socket.id] = username;
 
-      // Emit updated user list to all clients in the lobby
-      io.to(lobbyId).emit('userList', lobby.users);
-
-      // Setup cleanup handlers
+      // Cleanup handlers
       socket.on('leaveLobby', () => handleUserLeave(socket, lobbyId, username));
       socket.on('disconnect', () => handleUserLeave(socket, lobbyId, username));
     } catch (error) {
       console.error('Error joining lobby:', error);
+      socket.emit('error', 'An error occurred while joining the lobby.');
     }
   });
 
-  // Handle chat messages
   socket.on('sendMessage', ({ lobbyId, message, username }) => {
     console.log(`Message from ${username} in lobby ${lobbyId}: ${message}`);
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
-  // Handle user leaving the lobby
   async function handleUserLeave(socket, lobbyId, username) {
     try {
       console.log(`User ${username} leaving lobby: ${lobbyId}`);
       const lobby = await Lobby.findOne({ lobbyId });
-      if (!lobby) return; // If lobby doesn't exist, exit
+      if (!lobby) return;
 
-      // Remove the user from MongoDB
-      lobby.users = lobby.users.filter((user) => user !== username);
+      // Remove user from MongoDB
+      lobby.users = lobby.users.filter(user => user !== username);
       lobby.currentUsers--;
 
       // If no users left or host leaves, delete the lobby
       if (lobby.currentUsers === 0 || lobby.host === username) {
         console.log(`Closing lobby: ${lobbyId}`);
         io.to(lobbyId).emit('lobbyClosed');
-        await Lobby.deleteOne({ lobbyId }); // Delete from MongoDB
-        delete lobbies[lobbyId]; // Delete from in-memory storage
+        await Lobby.deleteOne({ lobbyId });
+        delete lobbies[lobbyId];
       } else {
-        await lobby.save(); // Update MongoDB
+        await lobby.save();
         io.to(lobbyId).emit('userList', lobby.users); // Emit updated user list
       }
 
