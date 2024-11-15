@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const Lobby = require('./api/models/Lobby');
+const Lobby = require('./api/models/Lobby'); // Ensure this path is correct
 
 dotenv.config();
 
@@ -15,7 +15,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
   'https://studybuddy-team24.netlify.app',
   'https://studybuddy.ddns.net',
-  /^http:\/\/localhost:\d+$/, // Allows localhost on any port
+  /^http:\/\/localhost:\d+$/, // Allows localhost for development
 ];
 
 // Setup Socket.IO with CORS
@@ -51,18 +51,18 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .catch(err => console.error(err));
 
 // Lobby management with Socket.IO
-const lobbies = {}; // Tracks lobbies and members
-
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('joinLobby', async ({ lobbyId, username }) => {
     try {
+      // Join Socket.IO room
       socket.join(lobbyId);
 
-      // Retrieve or create the lobby in MongoDB
+      // Retrieve or initialize the lobby in MongoDB
       let lobby = await Lobby.findOne({ lobbyId });
       if (!lobby) {
+        console.log(`Creating new lobby: ${lobbyId}`);
         lobby = new Lobby({
           lobbyId,
           host: username,
@@ -71,7 +71,6 @@ io.on('connection', (socket) => {
         });
         await lobby.save();
       } else {
-        // Add user to the lobby if not already present
         if (!lobby.users.includes(username)) {
           lobby.users.push(username);
           lobby.currentUsers++;
@@ -79,14 +78,12 @@ io.on('connection', (socket) => {
         }
       }
 
-      lobbies[lobbyId] = lobbies[lobbyId] || { members: {}, host: username };
-      lobbies[lobbyId].members[socket.id] = username;
-
+      // Emit updated user list
       io.to(lobbyId).emit('userList', lobby.users);
 
-      // Handle when the host disconnects, close the lobby and remove it from the database
-      socket.on('leaveLobby', () => handleUserLeave(socket, lobbyId));
-      socket.on('disconnect', () => handleUserLeave(socket, lobbyId));
+      // Cleanup handlers
+      socket.on('leaveLobby', () => handleUserLeave(socket, lobbyId, username));
+      socket.on('disconnect', () => handleUserLeave(socket, lobbyId, username));
     } catch (error) {
       console.error('Error joining lobby:', error);
     }
@@ -96,28 +93,27 @@ io.on('connection', (socket) => {
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
-  async function handleUserLeave(socket, lobbyId) {
-    const lobby = lobbies[lobbyId];
-    if (!lobby) return;
+  async function handleUserLeave(socket, lobbyId, username) {
+    try {
+      const lobby = await Lobby.findOne({ lobbyId });
+      if (!lobby) return;
 
-    const username = lobby.members[socket.id];
-    delete lobby.members[socket.id];
+      // Remove user from MongoDB
+      lobby.users = lobby.users.filter(user => user !== username);
+      lobby.currentUsers--;
 
-    // Update MongoDB: Remove user from the lobby
-    const dbLobby = await Lobby.findOne({ lobbyId });
-    if (dbLobby) {
-      dbLobby.users = dbLobby.users.filter(user => user !== username);
-      dbLobby.currentUsers--;
-
-      // Close lobby if host leaves or lobby is empty
-      if (dbLobby.currentUsers === 0 || dbLobby.host === username) {
+      // If no users left or host leaves, delete the lobby
+      if (lobby.currentUsers === 0 || lobby.host === username) {
         io.to(lobbyId).emit('lobbyClosed');
-        delete lobbies[lobbyId];
-        await dbLobby.deleteOne();
+        await Lobby.deleteOne({ lobbyId });
       } else {
-        await dbLobby.save();
-        io.to(lobbyId).emit('userList', dbLobby.users);
+        await lobby.save();
+        io.to(lobbyId).emit('userList', lobby.users); // Emit updated user list
       }
+
+      socket.leave(lobbyId); // Leave Socket.IO room
+    } catch (error) {
+      console.error('Error handling user leave:', error);
     }
   }
 });
