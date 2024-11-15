@@ -56,6 +56,8 @@ io.on('connection', (socket) => {
 
   socket.on('joinLobby', async ({ lobbyId, username }) => {
     try {
+      console.log(`User ${username} joining lobby: ${lobbyId}`);
+
       // Join Socket.IO room
       socket.join(lobbyId);
 
@@ -70,16 +72,19 @@ io.on('connection', (socket) => {
           currentUsers: 1,
         });
         await lobby.save();
-      } else {
-        if (!lobby.users.includes(username)) {
-          lobby.users.push(username);
-          lobby.currentUsers++;
-          await lobby.save();
-        }
+      } else if (!lobby.users.includes(username)) {
+        // Add user to the lobby only if not already present
+        lobby.users.push(username);
+        lobby.currentUsers++;
+        await lobby.save();
       }
 
       // Emit updated user list
       io.to(lobbyId).emit('userList', lobby.users);
+
+      // Track the user in the in-memory `lobbies` object
+      lobbies[lobbyId] = lobbies[lobbyId] || { members: {}, host: lobby.host };
+      lobbies[lobbyId].members[socket.id] = username;
 
       // Cleanup handlers
       socket.on('leaveLobby', () => handleUserLeave(socket, lobbyId, username));
@@ -90,11 +95,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('sendMessage', ({ lobbyId, message, username }) => {
+    console.log(`Message from ${username} in lobby ${lobbyId}: ${message}`);
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
   async function handleUserLeave(socket, lobbyId, username) {
     try {
+      console.log(`User ${username} leaving lobby: ${lobbyId}`);
       const lobby = await Lobby.findOne({ lobbyId });
       if (!lobby) return;
 
@@ -104,8 +111,10 @@ io.on('connection', (socket) => {
 
       // If no users left or host leaves, delete the lobby
       if (lobby.currentUsers === 0 || lobby.host === username) {
+        console.log(`Closing lobby: ${lobbyId}`);
         io.to(lobbyId).emit('lobbyClosed');
         await Lobby.deleteOne({ lobbyId });
+        delete lobbies[lobbyId];
       } else {
         await lobby.save();
         io.to(lobbyId).emit('userList', lobby.users); // Emit updated user list
