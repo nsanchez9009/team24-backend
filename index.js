@@ -51,9 +51,12 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
   .catch(err => console.error(err));
 
 // Lobby management with Socket.IO
+const lobbies = {}; // Tracks lobbies and members in-memory
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
+  // User joins a lobby
   socket.on('joinLobby', async ({ lobbyId, username }) => {
     try {
       console.log(`User ${username} joining lobby: ${lobbyId}`);
@@ -79,14 +82,14 @@ io.on('connection', (socket) => {
         await lobby.save();
       }
 
-      // Emit updated user list
-      io.to(lobbyId).emit('userList', lobby.users);
-
-      // Track the user in the in-memory `lobbies` object
+      // Synchronize with in-memory lobbies
       lobbies[lobbyId] = lobbies[lobbyId] || { members: {}, host: lobby.host };
       lobbies[lobbyId].members[socket.id] = username;
 
-      // Cleanup handlers
+      // Emit updated user list to all clients in the lobby
+      io.to(lobbyId).emit('userList', lobby.users);
+
+      // Setup cleanup handlers
       socket.on('leaveLobby', () => handleUserLeave(socket, lobbyId, username));
       socket.on('disconnect', () => handleUserLeave(socket, lobbyId, username));
     } catch (error) {
@@ -94,29 +97,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle chat messages
   socket.on('sendMessage', ({ lobbyId, message, username }) => {
     console.log(`Message from ${username} in lobby ${lobbyId}: ${message}`);
     io.to(lobbyId).emit('receiveMessage', { username, text: message });
   });
 
+  // Handle user leaving the lobby
   async function handleUserLeave(socket, lobbyId, username) {
     try {
       console.log(`User ${username} leaving lobby: ${lobbyId}`);
       const lobby = await Lobby.findOne({ lobbyId });
-      if (!lobby) return;
+      if (!lobby) return; // If lobby doesn't exist, exit
 
-      // Remove user from MongoDB
-      lobby.users = lobby.users.filter(user => user !== username);
+      // Remove the user from MongoDB
+      lobby.users = lobby.users.filter((user) => user !== username);
       lobby.currentUsers--;
 
       // If no users left or host leaves, delete the lobby
       if (lobby.currentUsers === 0 || lobby.host === username) {
         console.log(`Closing lobby: ${lobbyId}`);
         io.to(lobbyId).emit('lobbyClosed');
-        await Lobby.deleteOne({ lobbyId });
-        delete lobbies[lobbyId];
+        await Lobby.deleteOne({ lobbyId }); // Delete from MongoDB
+        delete lobbies[lobbyId]; // Delete from in-memory storage
       } else {
-        await lobby.save();
+        await lobby.save(); // Update MongoDB
         io.to(lobbyId).emit('userList', lobby.users); // Emit updated user list
       }
 
