@@ -53,18 +53,18 @@ mongoose
   .then(() => console.log('MongoDB connected'))
   .catch((err) => console.error(err));
 
-// Socket.IO lobby management
+// Lobby management with Socket.IO
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('joinLobby', async ({ lobbyId, username, name, className, school, maxUsers }) => {
     try {
-      console.log(`User ${username} joining lobby: ${lobbyId}`);
+      console.log(`User ${username} attempting to join lobby: ${lobbyId}`);
       socket.join(lobbyId);
 
       let lobby = await Lobby.findOne({ lobbyId });
 
-      // Create lobby if not exists
+      // If lobby doesn't exist, create a new one
       if (!lobby) {
         if (!name || !className || !school || !maxUsers) {
           console.error('Missing required fields for lobby creation.');
@@ -80,24 +80,28 @@ io.on('connection', (socket) => {
           school,
           host: username,
           maxUsers,
-          users: [username],
+          users: [username], // Host added only during creation
           currentUsers: 1,
         });
         await lobby.save();
-      } else if (!lobby.users.includes(username)) {
-        // Add user to lobby if not already present
-        if (lobby.currentUsers < lobby.maxUsers) {
-          lobby.users.push(username);
-          lobby.currentUsers++;
-          await lobby.save();
-        } else {
-          socket.emit('error', 'Lobby is full.');
-          return;
+      } else {
+        // If lobby exists, add user if not already in the list
+        if (!lobby.users.includes(username)) {
+          if (lobby.currentUsers < lobby.maxUsers) {
+            lobby.users.push(username);
+            lobby.currentUsers++;
+            await lobby.save();
+          } else {
+            socket.emit('error', 'Lobby is full.');
+            return;
+          }
         }
       }
 
+      // Emit updated user list
       io.to(lobbyId).emit('userList', lobby.users);
 
+      // Handle user leaving or disconnecting
       socket.on('leaveLobby', () => handleUserLeave(socket, lobbyId, username));
       socket.on('disconnect', () => handleUserLeave(socket, lobbyId, username));
     } catch (error) {
@@ -121,14 +125,14 @@ io.on('connection', (socket) => {
       lobby.users = lobby.users.filter((user) => user !== username);
       lobby.currentUsers--;
 
-      // Delete lobby if no users are left or host leaves
+      // If no users left or the host leaves, delete the lobby
       if (lobby.currentUsers === 0 || lobby.host === username) {
         console.log(`Closing lobby: ${lobbyId}`);
         io.to(lobbyId).emit('lobbyClosed');
         await Lobby.deleteOne({ lobbyId });
       } else {
         await lobby.save();
-        io.to(lobbyId).emit('userList', lobby.users);
+        io.to(lobbyId).emit('userList', lobby.users); // Emit updated user list
       }
 
       socket.leave(lobbyId);
