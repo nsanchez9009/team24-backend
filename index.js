@@ -80,8 +80,9 @@ io.on('connection', (socket) => {
           school,
           host: username,
           maxUsers,
-          users: [username], // Host added only during creation
+          users: [username],
           currentUsers: 1,
+          messages: [], // Initialize an empty messages array
         });
         await lobby.save();
       } else {
@@ -98,7 +99,8 @@ io.on('connection', (socket) => {
         }
       }
 
-      // Emit updated user list
+      // Emit existing messages and updated user list
+      socket.emit('initialMessages', lobby.messages);
       io.to(lobbyId).emit('userList', lobby.users);
 
       // Handle user leaving or disconnecting
@@ -110,9 +112,26 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('sendMessage', ({ lobbyId, message, username }) => {
-    console.log(`Message from ${username} in lobby ${lobbyId}: ${message}`);
-    io.to(lobbyId).emit('receiveMessage', { username, text: message });
+  socket.on('sendMessage', async ({ lobbyId, message, username }) => {
+    try {
+      console.log(`Message from ${username} in lobby ${lobbyId}: ${message}`);
+      const lobby = await Lobby.findOne({ lobbyId });
+
+      if (!lobby) {
+        console.error('Lobby not found for message storage.');
+        return;
+      }
+
+      // Save message to the database
+      const newMessage = { username, text: message };
+      lobby.messages.push(newMessage);
+      await lobby.save();
+
+      // Emit the message to the lobby
+      io.to(lobbyId).emit('receiveMessage', newMessage);
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
   });
 
   async function handleUserLeave(socket, lobbyId, username) {

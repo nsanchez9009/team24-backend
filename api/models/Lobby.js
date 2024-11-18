@@ -10,6 +10,13 @@ const LobbySchema = new mongoose.Schema({
     maxUsers: { type: Number, required: true, min: 2, max: 4 },
     currentUsers: { type: Number, default: 1 }, // Defaults to 1 (host joins the lobby)
     users: [{ type: String }], // Array of usernames
+    messages: [
+    {
+      username: { type: String, required: true },
+      text: { type: String, required: true },
+      timestamp: { type: Date, default: Date.now },
+    },
+  ],
 });
 
 module.exports = mongoose.model('Lobby', LobbySchema);
