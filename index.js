@@ -62,8 +62,9 @@ io.on('connection', (socket) => {
   socket.on('joinLobby', async ({ lobbyId, username, name, className, school, maxUsers }) => {
     try {
       if (!lobbyId) {
-        lobbyId = uuidv4(); // Generate unique lobby ID if not provided
-        console.log(`Generated new lobby ID: ${lobbyId}`);
+        console.error('Lobby ID is required.');
+        socket.emit('error', 'Lobby ID is required.');
+        return;
       }
 
       console.log(`User ${username} attempting to join lobby: ${lobbyId}`);

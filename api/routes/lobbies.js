@@ -1,4 +1,5 @@
 const express = require('express');
+const { v4: uuidv4 } = require('uuid'); // Import UUID for unique lobbyId generation
 const Lobby = require('../models/Lobby');
 const router = express.Router();
 
@@ -12,6 +13,7 @@ router.post('/create', async (req, res) => {
 
   try {
     const newLobby = new Lobby({
+      lobbyId: uuidv4(), // Generate unique lobbyId
       name,
       className,
       school,
@@ -19,7 +21,7 @@ router.post('/create', async (req, res) => {
       maxUsers,
       currentUsers: 1,
       users: [host], // Initialize with the host in the users array
-      messages: [],  // Initialize an empty messages array
+      messages: [], // Initialize an empty messages array
     });
     await newLobby.save();
     res.status(201).json(newLobby);
@@ -112,7 +114,7 @@ router.post('/:lobbyId/messages', async (req, res) => {
       return res.status(404).json({ message: 'Lobby not found' });
     }
 
-    const newMessage = { username, text };
+    const newMessage = { username, text, timestamp: new Date() }; // Add timestamp for message
     lobby.messages.push(newMessage);
     await lobby.save();
 
