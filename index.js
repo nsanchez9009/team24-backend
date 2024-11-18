@@ -57,6 +57,7 @@ mongoose
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
+  // Handle joining a lobby
   socket.on('joinLobby', async ({ lobbyId, username, name, className, school, maxUsers }) => {
     try {
       console.log(`User ${username} attempting to join lobby: ${lobbyId}`);
@@ -64,7 +65,7 @@ io.on('connection', (socket) => {
 
       let lobby = await Lobby.findOne({ lobbyId });
 
-      // If lobby doesn't exist, create a new one
+      // Create a new lobby if it doesn't exist
       if (!lobby) {
         if (!name || !className || !school || !maxUsers) {
           console.error('Missing required fields for lobby creation.');
@@ -112,8 +113,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle sending messages
   socket.on('sendMessage', async ({ lobbyId, message, username }) => {
     try {
+      if (!message.trim() || !username) {
+        console.error('Invalid message format.');
+        return;
+      }
+
       console.log(`Message from ${username} in lobby ${lobbyId}: ${message}`);
       const lobby = await Lobby.findOne({ lobbyId });
 
@@ -122,8 +129,8 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Save message to the database
-      const newMessage = { username, text: message };
+      // Save the message to the database
+      const newMessage = { username, text: message, timestamp: new Date() };
       lobby.messages.push(newMessage);
       await lobby.save();
 
@@ -134,13 +141,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle user leaving the lobby
   async function handleUserLeave(socket, lobbyId, username) {
     try {
       console.log(`User ${username} leaving lobby: ${lobbyId}`);
       const lobby = await Lobby.findOne({ lobbyId });
       if (!lobby) return;
 
-      // Remove user from MongoDB lobby
+      // Remove the user from the lobby
       lobby.users = lobby.users.filter((user) => user !== username);
       lobby.currentUsers--;
 
