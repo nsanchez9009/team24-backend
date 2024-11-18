@@ -17,7 +17,7 @@ router.post('/create', async (req, res) => {
       school,
       host,
       maxUsers,
-      currentUsers: 0,
+      currentUsers: 1,
       users: [host], // Initialize with the host in the users array
       messages: [],  // Initialize an empty messages array
     });
