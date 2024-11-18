@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const { v4: uuidv4 } = require('uuid'); // UUID for unique lobby IDs
 const Lobby = require('./api/models/Lobby');
 
 dotenv.config();
@@ -60,6 +61,11 @@ io.on('connection', (socket) => {
   // Handle joining a lobby
   socket.on('joinLobby', async ({ lobbyId, username, name, className, school, maxUsers }) => {
     try {
+      if (!lobbyId) {
+        lobbyId = uuidv4(); // Generate unique lobby ID if not provided
+        console.log(`Generated new lobby ID: ${lobbyId}`);
+      }
+
       console.log(`User ${username} attempting to join lobby: ${lobbyId}`);
       socket.join(lobbyId);
 
